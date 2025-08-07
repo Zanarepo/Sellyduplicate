@@ -5,11 +5,11 @@ import {
   FaBook, FaBoxes, FaArrowLeft
 } from "react-icons/fa";
 
-import AccountPayable from '../DynamicSales/AccountPayable';
-import AccountReceivables from '../DynamicSales/AccountReceivables';
-import FinancialReports from '../DynamicSales/FinancialReports';
-import GeneralLedger from '../DynamicSales/GeneralLedger';
-import InventoryValuations from '../DynamicSales/InventoryValuations';
+import AccountPayable from '../Finance/AccountPayable';
+import AccountReceivables from '../Finance/AccountReceivables';
+import FinancialReports from '../Finance/FinancialReports';
+import GeneralLedger from '../Finance/GeneralLedger';
+import InventoryValuations from '../Finance/InventoryValuations';
 
 const financeTools = [
   {
@@ -33,9 +33,6 @@ const financeTools = [
     desc: "View profit & loss, balance sheet, and cash flow",
     component: <FinancialReports />,
   },
-
-
-  
   {
     key: "ledger",
     label: "General Ledger",
