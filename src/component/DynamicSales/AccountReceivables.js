@@ -34,6 +34,7 @@ export default function AccountsReceivable() {
       return;
     }
     fetchArEntries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function AccountsReceivable() {
     if (error) {
       toast.error('Can’t load debts: ' + error.message);
     } else {
+      console.log('Fetched data:', data); // Debug log (remove in production)
       setArEntries(data || []);
       setFilteredAr(data || []);
     }
@@ -98,21 +100,58 @@ export default function AccountsReceivable() {
   };
 
   const handleProductClick = (entry) => {
-    // Parse device_id, qty, and device_sizes
-    const deviceIds = entry.device_id ? (Array.isArray(entry.device_id) ? entry.device_id : entry.device_id.split(',')) : [];
-    const quantities = entry.qty ? (Array.isArray(entry.qty) ? entry.qty : entry.qty.toString().split(',')) : [];
-    const deviceSizes = entry.device_sizes ? (Array.isArray(entry.device_sizes) ? entry.device_sizes : entry.device_sizes.split(',')) : [];
+    console.log('Selected entry:', entry); // Debug log (remove in production)
+    let deviceIds = [];
+    let sizes = [];
+    let totalQty = 'Not provided';
 
-    // Create items array to pair device_id, qty, and size
-    const items = deviceIds.map((id, index) => ({
-      device_id: id.trim() || 'Not provided',
-      qty: quantities[index] ? parseInt(quantities[index], 10) || 'Not provided' : 'Not provided',
-      size: deviceSizes[index] ? deviceSizes[index].trim() || 'Not provided' : 'Not provided',
-    }));
+    // Parse qty (used differently based on case)
+    if (entry.qty) {
+      totalQty = isNaN(parseInt(entry.qty, 10))
+        ? 'Not provided'
+        : parseInt(entry.qty, 10);
+    }
+
+    // Check for multiple items (device_id as comma-separated string)
+    if (
+      entry.device_id &&
+      entry.device_id.trim() !== '' &&
+      entry.device_id.includes(',')
+    ) {
+      deviceIds = Array.isArray(entry.device_id)
+        ? entry.device_id
+        : String(entry.device_id).split(',');
+      // Use device_sizes as a comma-separated string for multiple items, if available
+      sizes = entry.device_sizes && entry.device_sizes.trim() !== ''
+        ? String(entry.device_sizes).split(',')
+        : new Array(deviceIds.length).fill('Not provided');
+      // Ensure sizes array matches deviceIds length
+      sizes = sizes.length >= deviceIds.length
+        ? sizes.slice(0, deviceIds.length)
+        : [...sizes, ...new Array(deviceIds.length - sizes.length).fill('Not provided')];
+    }
+    // Check for single item (device_id as single string)
+    else if (
+      entry.device_id &&
+      entry.device_id.trim() !== ''
+    ) {
+      deviceIds = [String(entry.device_id)];
+      sizes = [entry.device_sizes && entry.device_sizes.trim() !== ''
+        ? String(entry.device_sizes)
+        : 'Not provided'];
+    }
+
+    const items = deviceIds.length > 0
+      ? deviceIds.map((id, index) => ({
+          device_id: id?.trim() || 'Not provided',
+          size: sizes[index]?.trim() || 'Not provided',
+          qty: entry.device_id && entry.device_id.includes(',') ? 1 : totalQty,
+        }))
+      : [{ device_id: 'Not provided', size: 'Not provided', qty: totalQty }];
 
     setSelectedProduct({
-      product_name: entry.product_name,
-      items: items.length > 0 ? items : [{ device_id: 'Not provided', qty: entry.qty || 'Not provided', size: 'Not provided' }],
+      product_name: entry.product_name || 'Unknown',
+      items,
     });
     setIsProductModalOpen(true);
   };
@@ -379,7 +418,7 @@ export default function AccountsReceivable() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-label="Product details modal">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 w-full max-w-md mx-4">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Item Details: {selectedProduct.product_name}</h3>
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Product Details: {selectedProduct.product_name}</h3>
               <button
                 onClick={closeProductModal}
                 className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:ring-2 focus:ring-indigo-500"

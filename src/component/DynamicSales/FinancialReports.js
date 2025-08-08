@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback} from 'react';
 import { supabase } from '../../supabaseClient';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -13,98 +13,108 @@ export default function FinancialReports() {
   const entriesPerPage = 10;
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (!storeId) {
-      toast.error('No store selected. Please choose a store.');
+  const fetchReportData = useCallback(async () => {
+  setIsLoading(true);
+
+  if (reportType === 'money_snapshot') {
+    const { data: ledger, error: ledgerError } = await supabase
+      .from('general_ledger')
+      .select('*')
+      .eq('store_id', storeId)
+      .gte('transaction_date', dateRange.start || '1900-01-01')
+      .lte('transaction_date', dateRange.end || '9999-12-31');
+
+    if (ledgerError) {
+      toast.error('Can’t load data: ' + ledgerError.message);
+      setReportData({});
+      setIsLoading(false);
       return;
     }
-    fetchReportData();
-  }, [storeId, reportType, dateRange]);
 
-  async function fetchReportData() {
-    setIsLoading(true);
-    if (reportType === 'money_snapshot') {
-      const { data: ledger, error: ledgerError } = await supabase
-        .from('general_ledger')
-        .select('*')
-        .eq('store_id', storeId)
-        .gte('transaction_date', dateRange.start || '1900-01-01')
-        .lte('transaction_date', dateRange.end || '9999-12-31');
-      if (ledgerError) {
-        toast.error('Can’t load data: ' + ledgerError.message);
-        setReportData({});
-        setIsLoading(false);
-        return;
-      }
-      const balances = ledger.reduce((acc, entry) => {
-        acc[entry.account] = (acc[entry.account] || 0) + (entry.debit || 0) - (entry.credit || 0);
-        return acc;
-      }, {});
-      const assetsTotal = (balances['Inventory'] || 0) + (balances['Accounts Receivable'] || 0) + (balances['Cash'] || 0);
-      const liabilitiesTotal = balances['Accounts Payable'] || 0;
-      const equityTotal = (balances['Revenue'] || 0) - (balances['COGS'] || 0) - (balances['Bad Debt Expense'] || 0);
-      setReportData({
-        entries: ledger,
-        assets: {
-          'Cash': balances['Cash'] || 0,
-          'Inventory (Stock)': balances['Inventory'] || 0,
-          'Money Owed to You': balances['Accounts Receivable'] || 0,
-        },
-        liabilities: {
-          'Money You Owe': balances['Accounts Payable'] || 0,
-        },
-        equity: {
-          'Your Business Value': equityTotal,
-        },
-        totals: {
-          assets: assetsTotal,
-          liabilities: liabilitiesTotal,
-          equity: equityTotal,
-        },
-      });
-    } else if (reportType === 'earnings_report') {
-      const { data: ledger, error: ledgerError } = await supabase
-        .from('general_ledger')
-        .select('*')
-        .eq('store_id', storeId)
-        .in('account', ['Revenue', 'COGS', 'Bad Debt Expense'])
-        .gte('transaction_date', dateRange.start || '1900-01-01')
-        .lte('transaction_date', dateRange.end || '9999-12-31');
-      if (ledgerError) {
-        toast.error('Can’t load data: ' + ledgerError.message);
-        setReportData({});
-        setIsLoading(false);
-        return;
-      }
-      const balances = ledger.reduce((acc, entry) => {
-        acc[entry.account] = (acc[entry.account] || 0) + (entry.debit || 0) - (entry.credit || 0);
-        return acc;
-      }, {});
-      const netIncome = (balances['Revenue'] || 0) - (balances['COGS'] || 0) - (balances['Bad Debt Expense'] || 0);
-      setReportData({
-        entries: ledger,
+    const balances = ledger.reduce((acc, entry) => {
+      acc[entry.account] = (acc[entry.account] || 0) + (entry.debit || 0) - (entry.credit || 0);
+      return acc;
+    }, {});
+
+    const assetsTotal = (balances['Inventory'] || 0) + (balances['Accounts Receivable'] || 0) + (balances['Cash'] || 0);
+    const liabilitiesTotal = balances['Accounts Payable'] || 0;
+    const equityTotal = (balances['Revenue'] || 0) - (balances['COGS'] || 0) - (balances['Bad Debt Expense'] || 0);
+
+    setReportData({
+      entries: ledger,
+      assets: {
+        'Cash': balances['Cash'] || 0,
+        'Inventory (Stock)': balances['Inventory'] || 0,
+        'Money Owed to You': balances['Accounts Receivable'] || 0,
+      },
+      liabilities: {
+        'Money You Owe': balances['Accounts Payable'] || 0,
+      },
+      equity: {
+        'Your Business Value': equityTotal,
+      },
+      totals: {
+        assets: assetsTotal,
+        liabilities: liabilitiesTotal,
+        equity: equityTotal,
+      },
+    });
+  } else if (reportType === 'earnings_report') {
+    const { data: ledger, error: ledgerError } = await supabase
+      .from('general_ledger')
+      .select('*')
+      .eq('store_id', storeId)
+      .in('account', ['Revenue', 'COGS', 'Bad Debt Expense'])
+      .gte('transaction_date', dateRange.start || '1900-01-01')
+      .lte('transaction_date', dateRange.end || '9999-12-31');
+
+    if (ledgerError) {
+      toast.error('Can’t load data: ' + ledgerError.message);
+      setReportData({});
+      setIsLoading(false);
+      return;
+    }
+
+    const balances = ledger.reduce((acc, entry) => {
+      acc[entry.account] = (acc[entry.account] || 0) + (entry.debit || 0) - (entry.credit || 0);
+      return acc;
+    }, {});
+
+    const netIncome = (balances['Revenue'] || 0) - (balances['COGS'] || 0) - (balances['Bad Debt Expense'] || 0);
+
+    setReportData({
+      entries: ledger,
+      revenue: balances['Revenue'] || 0,
+      cogs: balances['COGS'] || 0,
+      expenses: {
+        'Bad Debts': balances['Bad Debt Expense'] || 0,
+      },
+      netIncome: netIncome,
+      totals: {
         revenue: balances['Revenue'] || 0,
         cogs: balances['COGS'] || 0,
-        expenses: {
-          'Bad Debts': balances['Bad Debt Expense'] || 0,
-        },
+        expenses: balances['Bad Debt Expense'] || 0,
         netIncome: netIncome,
-        totals: {
-          revenue: balances['Revenue'] || 0,
-          cogs: balances['COGS'] || 0,
-          expenses: balances['Bad Debt Expense'] || 0,
-          netIncome: netIncome,
-        },
-      });
-    }
-    setCurrentPage(1);
-    setIsLoading(false);
+      },
+    });
   }
+
+  setCurrentPage(1);
+  setIsLoading(false);
+}, [storeId, reportType, dateRange]); // 👈 Dependencies for fetchReportData
+
+useEffect(() => {
+  if (!storeId) {
+    toast.error('No store selected. Please choose a store.');
+    return;
+  }
+  fetchReportData();
+}, [storeId, reportType, dateRange, fetchReportData]); // 👈 No warning now
+
 
   // Pagination logic
   const indexOfLastEntry = currentPage * entriesPerPage;
   const indexOfFirstEntry = indexOfLastEntry - entriesPerPage;
-  const currentEntries = (reportData.entries || []).slice(indexOfFirstEntry, indexOfLastEntry);
   const totalPages = Math.ceil((reportData.entries || []).length / entriesPerPage);
 
   const paginate = (pageNumber) => {
@@ -192,7 +202,7 @@ export default function FinancialReports() {
                     <div className="text-lg font-semibold text-red-600 dark:text-red-400">
                       Total Money You Owe: ₦{(reportData.totals?.liabilities || 0).toFixed(2)}
                     </div>
-                    <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                    <div className="text-lg font-semibold text-indigo-600 dark:text-indigo-400">
                       Your Business Value: ₦{(reportData.totals?.equity || 0).toFixed(2)}
                     </div>
                   </div>
@@ -242,7 +252,7 @@ export default function FinancialReports() {
                     <div className="text-lg font-semibold text-red-600 dark:text-red-400">
                       Total Costs & Expenses: ₦{((reportData.totals?.cogs || 0) + (reportData.totals?.expenses || 0)).toFixed(2)}
                     </div>
-                    <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                    <div className="text-lg font-semibold text-indigo-600 dark:text-indigo-400">
                       Your Profit: ₦{(reportData.totals?.netIncome || 0).toFixed(2)}
                     </div>
                   </div>

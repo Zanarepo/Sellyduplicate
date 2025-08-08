@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback  } from 'react';
 import { supabase } from '../../supabaseClient';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -14,14 +14,34 @@ export default function GeneralLedger() {
   const entriesPerPage = 10;
   const [isLoading, setIsLoading] = useState(false);
 
+ const fetchLedger = useCallback(async () => {
+    setIsLoading(true);
+    const { data, error } = await supabase
+      .from('general_ledger')
+      .select('*')
+      .eq('store_id', storeId)
+      .order('transaction_date', { ascending: false });
+
+    if (error) {
+      toast.error('Couldn’t load transactions: ' + error.message);
+    } else {
+      setLedgerEntries(data || []);
+      setFilteredEntries(data || []);
+    }
+
+    setIsLoading(false);
+  }, [storeId]); // 👈 Only depends on storeId
+
+  // Run fetchLedger when storeId changes
   useEffect(() => {
     if (!storeId) {
       toast.error('No store selected. Please choose a store.');
       return;
     }
-    fetchLedger();
-  }, [storeId]);
+    fetchLedger(); // ✅ Safe to use now
+  }, [storeId, fetchLedger]);
 
+  // Filtering based on search, account, and date
   useEffect(() => {
     const filtered = ledgerEntries.filter(entry => {
       const matchesSearch = searchTerm
@@ -35,25 +55,12 @@ export default function GeneralLedger() {
         (!dateRange.end || new Date(entry.transaction_date) <= new Date(dateRange.end));
       return matchesSearch && matchesAccount && matchesDate;
     });
+
     setFilteredEntries(filtered);
     setCurrentPage(1); // Reset to page 1 when filters change
   }, [searchTerm, accountFilter, dateRange, ledgerEntries]);
 
-  async function fetchLedger() {
-    setIsLoading(true);
-    const { data, error } = await supabase
-      .from('general_ledger')
-      .select('*')
-      .eq('store_id', storeId)
-      .order('transaction_date', { ascending: false });
-    if (error) {
-      toast.error('Couldn’t load transactions: ' + error.message);
-    } else {
-      setLedgerEntries(data || []);
-      setFilteredEntries(data || []);
-    }
-    setIsLoading(false);
-  }
+  
 
   // Calculate totals for Money In (Debit) and Money Out (Credit)
   const totals = filteredEntries.reduce(
@@ -79,9 +86,12 @@ export default function GeneralLedger() {
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto dark:bg-gray-900 dark:text-white space-y-6">
       <ToastContainer />
-      <h2 className="text-2xl sm:text-3xl font-bold text-center text-gray-900 dark:text-gray-100">
-        Money Tracker (General Ledger)
+      
+
+<h2 className="text-2xl sm:text-3xl font-bold text-center text-gray-900 dark:text-gray-100 bg-gradient-to-r from-indigo-500 to-indigo-700 text-white py-4 rounded-lg">
+       Money Tracker (General Ledger)
       </h2>
+      
       <div className="flex flex-col sm:flex-row gap-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md">
         <input
           type="text"

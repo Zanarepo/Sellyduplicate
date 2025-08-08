@@ -2,7 +2,7 @@ import { supabase } from '../../supabaseClient';
 import React, { useState, useEffect } from 'react';
 import {
   FaMoneyCheckAlt, FaFileInvoiceDollar, FaClipboardList,
-  FaBook, FaBoxes, FaArrowLeft
+  FaBook, FaBoxes, FaArrowLeft, FaMoneyBillWave, FaExchangeAlt
 } from "react-icons/fa";
 
 import AccountPayable from '../DynamicSales/AccountPayable';
@@ -10,8 +10,21 @@ import AccountReceivables from '../DynamicSales/AccountReceivables';
 import FinancialReports from '../DynamicSales/FinancialReports';
 import GeneralLedger from '../DynamicSales/GeneralLedger';
 import InventoryValuations from '../DynamicSales/InventoryValuations';
+import AllFinancialDashboard from '../DynamicSales/AllFinancialDashboard';
+import Reconciliations from '../DynamicSales/Reconciliations';
 
 const financeTools = [
+  
+  
+   {
+    key: "financials",
+    label: "Financial Dashboard",
+    icon: <FaMoneyBillWave className="text-2xl sm:text-5xl text-indigo-600" />,
+    desc: "Visualize all your finances in one place",
+    component: <AllFinancialDashboard />,
+  },
+  
+  
   {
     key: "payables",
     label: "Account Payable",
@@ -50,6 +63,17 @@ const financeTools = [
     desc: "Evaluate your stock's financial worth over time",
     component: <InventoryValuations />,
   },
+
+{
+    key: "reconciliations",
+    label: "Reconciliations",
+    icon: <FaExchangeAlt className="text-2xl sm:text-5xl text-indigo-600" />,
+    desc: "audit and Reconcile all your financial transactions",
+    component: <Reconciliations />,
+  },
+
+
+  
 ];
 
 export default function Finance() {

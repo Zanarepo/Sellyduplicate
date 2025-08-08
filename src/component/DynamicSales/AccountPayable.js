@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -26,29 +26,7 @@ export default function AccountsPayable() {
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const entriesPerPage = 10;
 
-  useEffect(() => {
-    if (!storeId) {
-      toast.error('No store selected. Please choose a store.');
-      return;
-    }
-    fetchApEntries();
-  }, [storeId]);
-
-  useEffect(() => {
-    const filtered = apEntries.filter(entry => {
-      const matchesSearch = searchTerm
-        ? entry.supplier_name.toLowerCase().includes(searchTerm.toLowerCase())
-        : true;
-      const matchesStatus = statusFilter
-        ? entry.status === (statusFilter === 'Unpaid' ? 'Pending' : statusFilter === 'Part Paid' ? 'Partial' : statusFilter)
-        : true;
-      return matchesSearch && matchesStatus;
-    });
-    setFilteredAp(filtered);
-    setCurrentPage(1); // Reset to page 1 when filters change
-  }, [searchTerm, statusFilter, apEntries]);
-
-  async function fetchApEntries() {
+ const fetchApEntries = useCallback(async () => {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('accounts_payable')
@@ -72,7 +50,29 @@ export default function AccountsPayable() {
       setFilteredAp(data || []);
     }
     setIsLoading(false);
-  }
+}, [setIsLoading, storeId, setApEntries, setFilteredAp]);
+
+useEffect(() => {
+    if (!storeId) {
+      toast.error('No store selected. Please choose a store.');
+      return;
+    }
+    fetchApEntries();
+}, [storeId, fetchApEntries]);
+
+useEffect(() => {
+    const filtered = apEntries.filter(entry => {
+      const matchesSearch = searchTerm
+        ? entry.supplier_name.toLowerCase().includes(searchTerm.toLowerCase())
+        : true;
+      const matchesStatus = statusFilter
+        ? entry.status === (statusFilter === 'Unpaid' ? 'Pending' : statusFilter === 'Part Paid' ? 'Partial' : statusFilter)
+        : true;
+      return matchesSearch && matchesStatus;
+    });
+    setFilteredAp(filtered);
+    setCurrentPage(1); // Reset to page 1 when filters change
+}, [searchTerm, statusFilter, apEntries]);
 
   async function updatePaymentStatus(id, status) {
     const newStatus = status === 'Unpaid' ? 'Pending' : status === 'Part Paid' ? 'Partial' : status;
@@ -127,7 +127,7 @@ export default function AccountsPayable() {
       sizes = [entry.dynamic_product?.device_size && entry.dynamic_product.device_size.trim() !== ''
         ? String(entry.dynamic_product.device_size)
         : 'Not provided'];
-      totalQty = totalQty; // Use purchase_qty directly for single item
+   
     }
 
     const items = deviceIds.length > 0
