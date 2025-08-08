@@ -1,182 +1,236 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 // Fallback for Heroicons
-let MagnifyingGlassIcon, CalendarIcon, XMarkIcon;
+let MagnifyingGlassIcon, CalendarIcon, XMarkIcon, BuildingStorefrontIcon;
 try {
-  ({ MagnifyingGlassIcon, CalendarIcon, XMarkIcon } = require('@heroicons/react/24/outline'));
+  ({ MagnifyingGlassIcon, CalendarIcon, XMarkIcon, BuildingStorefrontIcon } = require('@heroicons/react/24/outline'));
 } catch (e) {
   console.warn('Heroicons not installed. Please run `npm install @heroicons/react`. Using text fallback.');
   MagnifyingGlassIcon = () => <span>🔍</span>;
   CalendarIcon = () => <span>📅</span>;
   XMarkIcon = () => <span>❌</span>;
+  BuildingStorefrontIcon = () => <span>🏪</span>;
 }
 
-export default function AccountsPayable() {
-  const storeId = localStorage.getItem('store_id');
-  const [apEntries, setApEntries] = useState([]);
-  const [filteredAp, setFilteredAp] = useState([]);
+export default function AccountsReceivable() {
+  const ownerId = Number(localStorage.getItem('owner_id')) || null;
+  const [storeId, setStoreId] = useState(localStorage.getItem('store_id') || '');
+  const [stores, setStores] = useState([]);
+  const [arEntries, setArEntries] = useState([]);
+  const [filteredAr, setFilteredAr] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [agingFilter, setAgingFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const entriesPerPage = 10;
 
- const fetchApEntries = useCallback(async () => {
-    setIsLoading(true);
-    const { data, error } = await supabase
-      .from('accounts_payable')
-      .select(`
-        id,
-        supplier_name,
-        amount,
-        status,
-        transaction_date,
-        dynamic_product_id,
-        dynamic_product (name, device_id, dynamic_product_imeis, purchase_qty, device_size)
-      `)
-      .eq('store_id', storeId)
-      .order('transaction_date', { ascending: false });
-    if (error) {
-      toast.error('Can’t load bills: ' + error.message);
-      console.error('Supabase error:', error);
-    } else {
-      console.log('Fetched data:', data); // Debug log (remove in production)
-      setApEntries(data || []);
-      setFilteredAp(data || []);
-    }
-    setIsLoading(false);
-}, [setIsLoading, storeId, setApEntries, setFilteredAp]);
-
-useEffect(() => {
-    if (!storeId) {
-      toast.error('No store selected. Please choose a store.');
+  // Fetch stores
+  useEffect(() => {
+    if (!ownerId) {
+      toast.error('No owner ID found. Please log in.');
+      setStores([]);
+      setIsLoading(false);
       return;
     }
-    fetchApEntries();
-}, [storeId, fetchApEntries]);
-
-useEffect(() => {
-    const filtered = apEntries.filter(entry => {
-      const matchesSearch = searchTerm
-        ? entry.supplier_name.toLowerCase().includes(searchTerm.toLowerCase())
-        : true;
-      const matchesStatus = statusFilter
-        ? entry.status === (statusFilter === 'Unpaid' ? 'Pending' : statusFilter === 'Part Paid' ? 'Partial' : statusFilter)
-        : true;
-      return matchesSearch && matchesStatus;
-    });
-    setFilteredAp(filtered);
-    setCurrentPage(1); // Reset to page 1 when filters change
-}, [searchTerm, statusFilter, apEntries]);
-
-  async function updatePaymentStatus(id, status) {
-    const newStatus = status === 'Unpaid' ? 'Pending' : status === 'Part Paid' ? 'Partial' : status;
-    const { error } = await supabase
-      .from('accounts_payable')
-      .update({ status: newStatus, updated_at: new Date().toISOString() })
-      .eq('id', id);
-    if (error) {
-      toast.error('Can’t update payment status: ' + error.message);
-    } else {
-      toast.success('Payment status updated.');
-      fetchApEntries();
+    async function fetchStores() {
+      setIsLoading(true);
+      const { data: storeData, error: storeErr } = await supabase
+        .from('stores')
+        .select('id, shop_name')
+        .eq('owner_user_id', ownerId);
+      if (storeErr) {
+        toast.error('Error fetching stores: ' + storeErr.message);
+        console.error('Store fetch error:', storeErr, { ownerId });
+        setStores([]);
+        setIsLoading(false);
+        return;
+      }
+      console.log('Fetched stores:', storeData);
+      setStores(storeData || []);
+      if (storeData.length === 0) {
+        toast.warn('No stores found for this owner.');
+      } else if (!storeId && storeData.length > 0) {
+        setStoreId(storeData[0].id);
+        localStorage.setItem('store_id', storeData[0].id);
+      }
+      setIsLoading(false);
     }
+    fetchStores();
+  }, [ownerId, storeId]);
+
+  // Fetch AR entries when storeId changes
+  useEffect(() => {
+    if (!storeId) {
+      toast.error('No store selected. Please choose a store.');
+      setArEntries([]);
+      setFilteredAr([]);
+      return;
+    }
+    fetchArEntries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId]);
+
+  // Filter AR entries
+  useEffect(() => {
+    const filtered = arEntries.filter(entry => {
+      const matchesSearch = searchTerm
+        ? entry.customer_name.toLowerCase().includes(searchTerm.toLowerCase())
+        : true;
+      const daysOverdue = Math.floor(
+        (new Date() - new Date(entry.date)) / (1000 * 60 * 60 * 24)
+      );
+      const matchesAging = agingFilter
+        ? (agingFilter === '0-30' && daysOverdue <= 30) ||
+          (agingFilter === '31-60' && daysOverdue > 30 && daysOverdue <= 60) ||
+          (agingFilter === '61-90' && daysOverdue > 60 && daysOverdue <= 90) ||
+          (agingFilter === '90+' && daysOverdue > 90)
+        : true;
+      return matchesSearch && matchesAging;
+    });
+    setFilteredAr(filtered);
+    setCurrentPage(1);
+  }, [searchTerm, agingFilter, arEntries]);
+
+  async function fetchArEntries() {
+    setIsLoading(true);
+    const { data, error } = await supabase
+      .from('debts')
+      .select('*')
+      .eq('store_id', storeId)
+      .gt('remaining_balance', 0)
+      .order('date', { ascending: false });
+    if (error) {
+      toast.error('Can’t load debts: ' + error.message);
+      console.error('Debts fetch error:', error, { storeId });
+    } else {
+      console.log('Fetched debts:', data);
+      setArEntries(data || []);
+      setFilteredAr(data || []);
+    }
+    setIsLoading(false);
   }
 
-  const handleItemClick = (entry) => {
-    console.log('Selected entry:', entry); // Debug log (remove in production)
+  async function fetchCustomerDetails(customerId) {
+    const { data, error } = await supabase
+      .from('customer')
+      .select('fullname, phone_number, address')
+      .eq('id', customerId)
+      .single();
+    if (error) {
+      toast.error('Can’t load customer details: ' + error.message);
+      console.error('Customer fetch error:', error, { customerId });
+      return null;
+    }
+    return data;
+  }
+
+  const handleCustomerClick = async (entry) => {
+    const customerDetails = await fetchCustomerDetails(entry.customer_id);
+    if (customerDetails) {
+      setSelectedCustomer({
+        ...customerDetails,
+        customer_name: entry.customer_name,
+      });
+      setIsCustomerModalOpen(true);
+    }
+  };
+
+  const handleProductClick = (entry) => {
+    console.log('Selected entry:', entry);
     let deviceIds = [];
     let sizes = [];
     let totalQty = 'Not provided';
 
-    // Parse purchase_qty (used differently based on case)
-    if (entry.dynamic_product?.purchase_qty) {
-      totalQty = isNaN(parseInt(entry.dynamic_product.purchase_qty, 10))
+    if (entry.qty) {
+      totalQty = isNaN(parseInt(entry.qty, 10))
         ? 'Not provided'
-        : parseInt(entry.dynamic_product.purchase_qty, 10);
+        : parseInt(entry.qty, 10);
     }
 
-    // Check for multiple items (dynamic_product_imeis)
     if (
-      entry.dynamic_product?.dynamic_product_imeis &&
-      entry.dynamic_product.dynamic_product_imeis.trim() !== ''
+      entry.device_id &&
+      entry.device_id.trim() !== '' &&
+      entry.device_id.includes(',')
     ) {
-      deviceIds = Array.isArray(entry.dynamic_product.dynamic_product_imeis)
-        ? entry.dynamic_product.dynamic_product_imeis
-        : String(entry.dynamic_product.dynamic_product_imeis).split(',');
-      // Use device_size as a comma-separated string for multiple items, if available
-      sizes = entry.dynamic_product?.device_size && entry.dynamic_product.device_size.trim() !== ''
-        ? String(entry.dynamic_product.device_size).split(',')
+      deviceIds = Array.isArray(entry.device_id)
+        ? entry.device_id
+        : String(entry.device_id).split(',');
+      sizes = entry.device_sizes && entry.device_sizes.trim() !== ''
+        ? String(entry.device_sizes).split(',')
         : new Array(deviceIds.length).fill('Not provided');
-      // Ensure sizes array matches deviceIds length
-      sizes = sizes.length >= deviceIds.length 
+      sizes = sizes.length >= deviceIds.length
         ? sizes.slice(0, deviceIds.length)
         : [...sizes, ...new Array(deviceIds.length - sizes.length).fill('Not provided')];
-    }
-    // Check for single item (device_id, device_size)
-    else if (
-      entry.dynamic_product?.device_id &&
-      entry.dynamic_product.device_id.trim() !== ''
+    } else if (
+      entry.device_id &&
+      entry.device_id.trim() !== ''
     ) {
-      deviceIds = [String(entry.dynamic_product.device_id)];
-      sizes = [entry.dynamic_product?.device_size && entry.dynamic_product.device_size.trim() !== ''
-        ? String(entry.dynamic_product.device_size)
+      deviceIds = [String(entry.device_id)];
+      sizes = [entry.device_sizes && entry.device_sizes.trim() !== ''
+        ? String(entry.device_sizes)
         : 'Not provided'];
-   
     }
 
     const items = deviceIds.length > 0
       ? deviceIds.map((id, index) => ({
           device_id: id?.trim() || 'Not provided',
           size: sizes[index]?.trim() || 'Not provided',
-          qty: entry.dynamic_product?.dynamic_product_imeis && entry.dynamic_product.dynamic_product_imeis.trim() !== '' ? 1 : totalQty,
+          qty: entry.device_id && entry.device_id.includes(',') ? 1 : totalQty,
         }))
-      : [{ device_id: 'Not provided', size: 'Not provided', qty: 'Not provided' }];
+      : [{ device_id: 'Not provided', size: 'Not provided', qty: totalQty }];
 
-    setSelectedItem({
-      product_name: entry.dynamic_product?.name || 'Unknown',
+    setSelectedProduct({
+      product_name: entry.product_name || 'Unknown',
       items,
     });
-    setIsItemModalOpen(true);
+    setIsProductModalOpen(true);
   };
 
-  const closeItemModal = () => {
-    setIsItemModalOpen(false);
-    setSelectedItem(null);
+  const closeCustomerModal = () => {
+    setIsCustomerModalOpen(false);
+    setSelectedCustomer(null);
   };
 
-  // Handle Escape key to close modal
+  const closeProductModal = () => {
+    setIsProductModalOpen(false);
+    setSelectedProduct(null);
+  };
+
   useEffect(() => {
     const handleEscape = (event) => {
       if (event.key === 'Escape') {
-        closeItemModal();
+        closeCustomerModal();
+        closeProductModal();
       }
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, []);
 
-  // Calculate totals
-  const totals = filteredAp.reduce(
+  const totals = filteredAr.reduce(
     (acc, entry) => {
+      const daysOverdue = Math.floor(
+        (new Date() - new Date(entry.date)) / (1000 * 60 * 60 * 24)
+      );
       return {
-        totalOwed: acc.totalOwed + (entry.amount || 0),
-        totalUnpaid: acc.totalUnpaid + (entry.status === 'Pending' ? entry.amount || 0 : 0),
+        totalOwed: acc.totalOwed + (entry.remaining_balance || 0),
+        overdue90Plus: acc.overdue90Plus + (daysOverdue > 90 ? entry.remaining_balance || 0 : 0),
       };
     },
-    { totalOwed: 0, totalUnpaid: 0 }
+    { totalOwed: 0, overdue90Plus: 0 }
   );
 
-  // Pagination logic
   const indexOfLastEntry = currentPage * entriesPerPage;
   const indexOfFirstEntry = indexOfLastEntry - entriesPerPage;
-  const currentEntries = filteredAp.slice(indexOfFirstEntry, indexOfLastEntry);
-  const totalPages = Math.ceil(filteredAp.length / entriesPerPage);
+  const currentEntries = filteredAr.slice(indexOfFirstEntry, indexOfLastEntry);
+  const totalPages = Math.ceil(filteredAr.length / entriesPerPage);
 
   const paginate = (pageNumber) => {
     if (pageNumber >= 1 && pageNumber <= totalPages) {
@@ -186,7 +240,7 @@ useEffect(() => {
 
   const clearFilters = () => {
     setSearchTerm('');
-    setStatusFilter('');
+    setAgingFilter('');
     setCurrentPage(1);
   };
 
@@ -194,46 +248,63 @@ useEffect(() => {
     <div className="p-4 sm:p-6 max-w-6xl mx-auto dark:bg-gray-900 dark:text-white space-y-6">
       <ToastContainer />
       <h2 className="text-2xl sm:text-3xl font-bold text-center text-white bg-gradient-to-r from-indigo-400 to-indigo-600 py-4 rounded-lg">
-        Money You Owe
+        Money Owed to You
       </h2>
-      <div className="bg-indigo-50 dark:bg-indigo-900 p-4 rounded-lg border border-indigo-200 dark:border-indigo-700 text-center text-lg text-gray-900 dark:text-gray-100">
-        Add item details (like IMEIs and sizes) to your products to track your bills clearly! Use lists for multiple items.
-      </div>
       <div className="flex flex-col gap-4 bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-md">
         <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative w-full sm:w-1/2">
+          <div className="relative w-full sm:w-1/3">
+            <BuildingStorefrontIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 hover:text-indigo-500 transition-colors" />
+            <select
+              value={storeId}
+              onChange={(e) => {
+                const newStoreId = e.target.value;
+                setStoreId(newStoreId);
+                localStorage.setItem('store_id', newStoreId);
+              }}
+              className="w-full pl-10 p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-indigo-500 text-lg"
+              aria-label="Select store"
+              title="Select store"
+            >
+              <option value="">Select a store</option>
+              {stores.map(store => (
+                <option key={store.id} value={store.id}>{store.shop_name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="relative w-full sm:w-1/3">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 hover:text-indigo-500 transition-colors" />
             <input
               type="text"
-              placeholder="Search for a supplier (e.g., 'ABC Supplies')"
+              placeholder="Search for a customer (e.g., 'Anna')"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full pl-10 p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-indigo-500 text-lg"
-              aria-label="Search for a supplier"
-              title="Search for a supplier"
+              aria-label="Search for a customer"
+              title="Search for a customer"
             />
           </div>
-          <div className="relative w-full sm:w-1/4">
+          <div className="relative w-full sm:w-1/3">
             <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 hover:text-indigo-500 transition-colors" />
             <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
+              value={agingFilter}
+              onChange={e => setAgingFilter(e.target.value)}
               className="w-full pl-10 p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-indigo-500 text-lg"
-              aria-label="Filter by payment status"
-              title="Filter by payment status"
+              aria-label="Select overdue range"
+              title="Filter by overdue range"
             >
-              <option value="">All Statuses</option>
-              <option value="Unpaid">Unpaid</option>
-              <option value="Paid">Paid</option>
-              <option value="Part Paid">Part Paid</option>
+              <option value="">All Overdue Ranges</option>
+              <option value="0-30">Up to 30 Days</option>
+              <option value="31-60">31-60 Days</option>
+              <option value="61-90">61-90 Days</option>
+              <option value="90+">Over 90 Days</option>
             </select>
           </div>
         </div>
         <button
           onClick={clearFilters}
           className="flex items-center justify-center w-full sm:w-auto px-4 py-2 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg text-lg hover:scale-105 transition-transform"
-          aria-label="Clear filters"
-          title="Clear filters"
+          aria-label="Clear all filters"
+          title="Reset all filters"
         >
           <XMarkIcon className="h-5 w-5 mr-2 hover:text-indigo-500 transition-colors" />
           Clear Filters
@@ -242,22 +313,22 @@ useEffect(() => {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6">
         <div className="bg-indigo-50 dark:bg-indigo-900 p-4 rounded-lg border border-indigo-200 dark:border-indigo-700 mb-4" aria-live="polite">
           <div className="flex flex-col sm:flex-row justify-around items-center gap-4">
-            <div className="text-lg font-semibold text-green-600 dark:text-green-400">
+            <div className="flex items-center text-lg font-semibold text-green-600 dark:text-green-400">
               Total Money Owed: ₦{totals.totalOwed.toFixed(2)}
             </div>
-            <div className="text-lg font-semibold text-red-600 dark:text-red-400">
-              Total Unpaid: ₦{totals.totalUnpaid.toFixed(2)}
+            <div className="flex items-center text-lg font-semibold text-red-600 dark:text-red-400">
+              Overdue 90+ Days: ₦{totals.overdue90Plus.toFixed(2)}
             </div>
           </div>
         </div>
         <div className="overflow-x-auto">
           {isLoading ? (
             <div className="p-6 text-center text-gray-500 dark:text-gray-400 text-lg">
-              Loading your bills...
+              Loading your debts...
             </div>
-          ) : filteredAp.length === 0 ? (
+          ) : filteredAr.length === 0 ? (
             <div className="p-6 text-center text-gray-500 dark:text-gray-400 text-lg">
-              No bills found. Try a different search or filter!
+              No debts found. Try a different store, search, or filter!
             </div>
           ) : (
             <>
@@ -265,51 +336,53 @@ useEffect(() => {
                 <thead className="bg-indigo-100 dark:bg-indigo-900 text-gray-900 dark:text-indigo-200 sticky top-0">
                   <tr>
                     <th className="text-left px-4 py-3 font-medium border-b dark:border-gray-700">Date</th>
-                    <th className="text-left px-4 py-3 font-medium border-b dark:border-gray-700">Supplier</th>
+                    <th className="text-left px-4 py-3 font-medium border-b dark:border-gray-700">Customer</th>
                     <th className="text-left px-4 py-3 font-medium border-b dark:border-gray-700">Item</th>
                     <th className="text-right px-4 py-3 font-medium border-b dark:border-gray-700">Amount Owed (₦)</th>
-                    <th className="text-left px-4 py-3 font-medium border-b dark:border-gray-700">Payment Status</th>
-                    <th className="text-left px-4 py-3 font-medium border-b dark:border-gray-700">Actions</th>
+                    <th className="text-right px-4 py-3 font-medium border-b dark:border-gray-700">Still Owed (₦)</th>
+                    <th className="text-right px-4 py-3 font-medium border-b dark:border-gray-700">Days Overdue</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {currentEntries.map(entry => (
-                    <tr
-                      key={entry.id}
-                      className="border-b dark:border-gray-700 hover:bg-indigo-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <td className="px-4 py-3">{new Date(entry.transaction_date).toLocaleDateString()}</td>
-                      <td className="px-4 py-3">{entry.supplier_name}</td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleItemClick(entry)}
-                          className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-200 underline focus:ring-2 focus:ring-indigo-500"
-                          aria-label={`View details for ${entry.dynamic_product?.name || 'Unknown'}`}
-                        >
-                          {entry.dynamic_product?.name || 'Unknown'}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-right">₦{entry.amount.toFixed(2)}</td>
-                      <td className="px-4 py-3">{entry.status === 'Pending' ? 'Unpaid' : entry.status === 'Partial' ? 'Part Paid' : entry.status}</td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={entry.status === 'Pending' ? 'Unpaid' : entry.status === 'Partial' ? 'Part Paid' : entry.status}
-                          onChange={e => updatePaymentStatus(entry.id, e.target.value)}
-                          className="p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-indigo-500 text-lg"
-                          aria-label={`Update payment status for ${entry.supplier_name}`}
-                        >
-                          <option value="Unpaid">Unpaid</option>
-                          <option value="Paid">Paid</option>
-                          <option value="Part Paid">Part Paid</option>
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
+                  {currentEntries.map(entry => {
+                    const daysOverdue = Math.floor(
+                      (new Date() - new Date(entry.date)) / (1000 * 60 * 60 * 24)
+                    );
+                    return (
+                      <tr
+                        key={entry.id}
+                        className="border-b dark:border-gray-700 hover:bg-indigo-50 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <td className="px-4 py-3">{new Date(entry.date).toLocaleDateString()}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => handleCustomerClick(entry)}
+                            className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-200 underline focus:ring-2 focus:ring-indigo-500"
+                            aria-label={`View details for ${entry.customer_name}`}
+                          >
+                            {entry.customer_name}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => handleProductClick(entry)}
+                            className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-200 underline focus:ring-2 focus:ring-indigo-500"
+                            aria-label={`View details for ${entry.product_name}`}
+                          >
+                            {entry.product_name}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-right">₦{entry.owed.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right">₦{entry.remaining_balance.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right">{daysOverdue} days</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               <div className="flex flex-row flex-wrap justify-between items-center mt-4 px-4 gap-4">
                 <div className="text-sm text-gray-600 dark:text-gray-300">
-                  Showing {indexOfFirstEntry + 1} to {Math.min(indexOfLastEntry, filteredAp.length)} of {filteredAp.length} bills
+                  Showing {indexOfFirstEntry + 1} to {Math.min(indexOfLastEntry, filteredAr.length)} of {filteredAr.length} debts
                 </div>
                 <div className="flex space-x-2">
                   <button
@@ -356,15 +429,53 @@ useEffect(() => {
           )}
         </div>
       </div>
-      {isItemModalOpen && selectedItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-label="Item details modal">
+      {isCustomerModalOpen && selectedCustomer && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-label="Customer details modal">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 w-full max-w-md mx-4">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Item Details: {selectedItem.product_name}</h3>
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Customer Details</h3>
               <button
-                onClick={closeItemModal}
+                onClick={closeCustomerModal}
                 className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:ring-2 focus:ring-indigo-500"
-                aria-label="Close item details modal"
+                aria-label="Close customer details modal"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="space-y-4 text-lg">
+              <p>
+                <span className="font-semibold text-gray-900 dark:text-gray-100">Name:</span>{' '}
+                {selectedCustomer.fullname}
+              </p>
+              <p>
+                <span className="font-semibold text-gray-900 dark:text-gray-100">Phone Number:</span>{' '}
+                {selectedCustomer.phone_number || 'Not provided'}
+              </p>
+              <p>
+                <span className="font-semibold text-gray-900 dark:text-gray-100">Address:</span>{' '}
+                {selectedCustomer.address || 'Not provided'}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={closeCustomerModal}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 dark:bg-indigo-800 dark:hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isProductModalOpen && selectedProduct && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-label="Product details modal">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 w-full max-w-md mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Product Details: {selectedProduct.product_name}</h3>
+              <button
+                onClick={closeProductModal}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:ring-2 focus:ring-indigo-500"
+                aria-label="Close product details modal"
               >
                 <XMarkIcon className="h-6 w-6" />
               </button>
@@ -373,13 +484,13 @@ useEffect(() => {
               <table className="min-w-full text-lg">
                 <thead className="bg-indigo-100 dark:bg-indigo-900 text-gray-900 dark:text-indigo-200">
                   <tr>
-                    <th className="text-left px-4 py-2 font-medium">Item ID (IMEI)</th>
+                    <th className="text-left px-4 py-2 font-medium">Item ID</th>
                     <th className="text-left px-4 py-2 font-medium">Size</th>
                     <th className="text-right px-4 py-2 font-medium">Quantity</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedItem.items.map((item, index) => (
+                  {selectedProduct.items.map((item, index) => (
                     <tr key={index} className="border-b dark:border-gray-700">
                       <td className="px-4 py-2">{item.device_id}</td>
                       <td className="px-4 py-2">{item.size}</td>
@@ -391,7 +502,7 @@ useEffect(() => {
             </div>
             <div className="mt-6 flex justify-end">
               <button
-                onClick={closeItemModal}
+                onClick={closeProductModal}
                 className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 dark:bg-indigo-800 dark:hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500"
               >
                 Close

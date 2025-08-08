@@ -1,21 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-// Fallback for Heroicons in case the package is not installed
-let MagnifyingGlassIcon, CalendarIcon, XMarkIcon;
+// Fallback for Heroicons
+let MagnifyingGlassIcon, CalendarIcon, XMarkIcon, BuildingStorefrontIcon;
 try {
-  ({ MagnifyingGlassIcon, CalendarIcon, XMarkIcon } = require('@heroicons/react/24/outline'));
+  ({ MagnifyingGlassIcon, CalendarIcon, XMarkIcon, BuildingStorefrontIcon } = require('@heroicons/react/24/outline'));
 } catch (e) {
   console.warn('Heroicons not installed. Please run `npm install @heroicons/react`. Using text fallback.');
   MagnifyingGlassIcon = () => <span>🔍</span>;
   CalendarIcon = () => <span>📅</span>;
   XMarkIcon = () => <span>❌</span>;
+  BuildingStorefrontIcon = () => <span>🏪</span>;
 }
 
 export default function InventoryValuation() {
-  const storeId = localStorage.getItem('store_id');
+  const ownerId = Number(localStorage.getItem('owner_id')) || null;
+  const [storeId, setStoreId] = useState(localStorage.getItem('store_id') || '');
+  const [stores, setStores] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [filteredInventory, setFilteredInventory] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,68 +27,105 @@ export default function InventoryValuation() {
   const [isLoading, setIsLoading] = useState(false);
   const entriesPerPage = 10;
 
-  useEffect(() => {
-    if (!storeId) {
-      toast.error('No store selected. Please choose a store.');
+  // Fetch stores
+// Fetch stores (unchanged)
+useEffect(() => {
+  if (!ownerId) {
+    toast.error('No owner ID found. Please log in.');
+    setStores([]);
+    setIsLoading(false);
+    return;
+  }
+  async function fetchStores() {
+    setIsLoading(true);
+    const { data: storeData, error: storeErr } = await supabase
+      .from('stores')
+      .select('id, shop_name')
+      .eq('owner_user_id', ownerId);
+    if (storeErr) {
+      toast.error('Error fetching stores: ' + storeErr.message);
+      console.error('Store fetch error:', storeErr, { ownerId });
+      setStores([]);
+      setIsLoading(false);
       return;
     }
-    fetchInventoryValuation();
-  }, [storeId]);
-
-  useEffect(() => {
-    let filtered = inventory.filter(item =>
-      searchTerm
-        ? item.product_name.toLowerCase().includes(searchTerm.toLowerCase())
-        : true
-    );
-
-    // Apply detail filter
-    if (detailFilter === 'complete') {
-      filtered = filtered.filter(item => item.purchase_price && item.purchase_price > 0);
-    } else if (detailFilter === 'incomplete') {
-      filtered = filtered.filter(item => !item.purchase_price || item.purchase_price === 0);
-    }
-
-    // Sort complete details first for 'all' filter
-    if (detailFilter === 'all') {
-      filtered.sort((a, b) => {
-        const aHasPrice = a.purchase_price && a.purchase_price > 0;
-        const bHasPrice = b.purchase_price && b.purchase_price > 0;
-        return bHasPrice - aHasPrice; // Complete (true) comes before incomplete (false)
-      });
-    }
-
-    setFilteredInventory(filtered);
-    setCurrentPage(1); // Reset to page 1 when filters change
-  }, [searchTerm, detailFilter, inventory]);
-
-  async function fetchInventoryValuation() {
-    setIsLoading(true);
-    const { data, error } = await supabase
-      .from('dynamic_inventory')
-      .select(`
-        id,
-        available_qty,
-        dynamic_product (id, name, purchase_price)
-      `)
-      .eq('store_id', storeId);
-    if (error) {
-      toast.error('Can’t load stock: ' + error.message);
-    } else {
-      // Flatten the data to match table structure
-      const flattenedData = (data || []).map(item => ({
-        id: item.id,
-        product_name: item.dynamic_product?.name || 'Unknown',
-        quantity: item.available_qty || 0,
-        purchase_price: item.dynamic_product?.purchase_price || null,
-      }));
-      setInventory(flattenedData);
-      setFilteredInventory(flattenedData);
+    console.log('Fetched stores:', storeData);
+    setStores(storeData || []);
+    if (storeData.length === 0) {
+      toast.warn('No stores found for this owner.');
+    } else if (!storeId && storeData.length > 0) {
+      setStoreId(storeData[0].id);
+      localStorage.setItem('store_id', storeData[0].id);
     }
     setIsLoading(false);
   }
+  fetchStores();
+}, [ownerId, storeId]);
 
-  // Calculate total stock value (only for items with purchase_price)
+// Fetch inventory when storeId changes
+const fetchInventoryValuation = useCallback(async () => {
+  setIsLoading(true);
+  const { data, error } = await supabase
+    .from('dynamic_inventory')
+    .select(`
+      id,
+      available_qty,
+      dynamic_product (id, name, purchase_price)
+    `)
+    .eq('store_id', storeId);
+  if (error) {
+    toast.error('Can’t load stock: ' + error.message);
+    console.error('Inventory fetch error:', error, { storeId });
+  } else {
+    const flattenedData = (data || []).map(item => ({
+      id: item.id,
+      product_name: item.dynamic_product?.name || 'Unknown',
+      quantity: item.available_qty || 0,
+      purchase_price: item.dynamic_product?.purchase_price || null,
+    }));
+    console.log('Fetched inventory:', flattenedData);
+    setInventory(flattenedData);
+    setFilteredInventory(flattenedData);
+  }
+  setIsLoading(false);
+}, [storeId]);
+
+useEffect(() => {
+  if (!storeId) {
+    toast.error('No store selected. Please choose a store.');
+    setInventory([]);
+    setFilteredInventory([]);
+    return;
+  }
+  fetchInventoryValuation();
+}, [storeId, fetchInventoryValuation]);
+
+// Filter inventory (unchanged)
+useEffect(() => {
+  let filtered = inventory.filter(item =>
+    searchTerm
+      ? item.product_name.toLowerCase().includes(searchTerm.toLowerCase())
+      : true
+  );
+
+  if (detailFilter === 'complete') {
+    filtered = filtered.filter(item => item.purchase_price && item.purchase_price > 0);
+  } else if (detailFilter === 'incomplete') {
+    filtered = filtered.filter(item => !item.purchase_price || item.purchase_price === 0);
+  }
+
+  if (detailFilter === 'all') {
+    filtered.sort((a, b) => {
+      const aHasPrice = a.purchase_price && a.purchase_price > 0;
+      const bHasPrice = b.purchase_price && b.purchase_price > 0;
+      return bHasPrice - aHasPrice;
+    });
+  }
+
+  setFilteredInventory(filtered);
+  setCurrentPage(1);
+}, [searchTerm, detailFilter, inventory]);
+
   const totalStockValue = filteredInventory.reduce((acc, item) => {
     return item.purchase_price && item.quantity && item.purchase_price > 0
       ? acc + item.quantity * item.purchase_price
@@ -96,7 +136,6 @@ export default function InventoryValuation() {
     item => item.purchase_price && item.purchase_price > 0
   );
 
-  // Pagination logic
   const indexOfLastEntry = currentPage * entriesPerPage;
   const indexOfFirstEntry = indexOfLastEntry - entriesPerPage;
   const currentEntries = filteredInventory.slice(indexOfFirstEntry, indexOfLastEntry);
@@ -125,7 +164,26 @@ export default function InventoryValuation() {
       </div>
       <div className="flex flex-col gap-4 bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg shadow-md">
         <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative w-full sm:w-1/2">
+          <div className="relative w-full sm:w-1/3">
+            <BuildingStorefrontIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 hover:text-indigo-500 transition-colors" />
+            <select
+              value={storeId}
+              onChange={(e) => {
+                const newStoreId = e.target.value;
+                setStoreId(newStoreId);
+                localStorage.setItem('store_id', newStoreId);
+              }}
+              className="w-full pl-10 p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-indigo-500 text-lg"
+              aria-label="Select store"
+              title="Select store"
+            >
+              <option value="">Select a store</option>
+              {stores.map(store => (
+                <option key={store.id} value={store.id}>{store.shop_name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="relative w-full sm:w-1/3">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 hover:text-indigo-500 transition-colors" />
             <input
               type="text"
@@ -137,7 +195,7 @@ export default function InventoryValuation() {
               title="Search for an item"
             />
           </div>
-          <div className="relative w-full sm:w-1/4">
+          <div className="relative w-full sm:w-1/3">
             <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 hover:text-indigo-500 transition-colors" />
             <select
               value={detailFilter}
@@ -177,7 +235,7 @@ export default function InventoryValuation() {
             </div>
           ) : filteredInventory.length === 0 ? (
             <div className="p-6 text-center text-gray-500 dark:text-gray-400 text-lg">
-              No items found. Try a different search or filter!
+              No items found. Try a different store, search, or filter!
             </div>
           ) : (
             <>
