@@ -615,7 +615,7 @@ const handleEditCheck = useCallback(async () => {
               <div key={method} className="bg-gray-50 p-4 rounded-md text-center shadow-sm">
                 <h4 className="text-sm font-medium text-gray-700">{method}</h4>
                 <p className="text-lg font-bold text-green-600">{formatCurrency(data.amount)}</p>
-                <p className="text-xs text-gray-500">{data.count} transactions</p>
+                <p className="text-xs text-gray-500">{data.count} transaction(s)</p>
               </div>
             ))}
           </div>
