@@ -69,7 +69,7 @@ const tools = [
     icon: <FaRegMoneyBillAlt className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'Keep track of your store spending.',
     component: <ExpenseTracker />,
-    isFreemium: false,
+    isFreemium: true,
   },
   {
     key: 'unpaid supplies',
@@ -85,7 +85,7 @@ const tools = [
     icon: <FaMoneyCheckAlt className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'Track debtors.',
     component: <DebtTracker />,
-    isFreemium: false,
+    isFreemium: true,
   },
   {
     key: 'sales_summary',

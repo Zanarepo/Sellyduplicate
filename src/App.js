@@ -31,6 +31,7 @@ import Test from './component/UserDashboard/Test';
 import Tests from './component/UserDashboard/Tests';
 import ReceiptQRCode from "./component/VariexContents/ReceiptQRCode";
 import ReceiptQRCodeWrapper from "./component/VariexContents/ReceiptQRCodeWrapper";
+import PricingFeatures from "./component/Payments/PricingFeatures"
 
 
 const App = () => {
@@ -57,6 +58,9 @@ const App = () => {
             <Route path="/team-signup" element={<TeamSignup />} />
             <Route path="/push-notifications" element={<PushNotifications />} />
             <Route path="/signaturepad" element={<SignaturePad />} />
+             <Route path="/upgrade" element={<PricingFeatures />} />
+            
+            
           </Route>
         </Routes>
 

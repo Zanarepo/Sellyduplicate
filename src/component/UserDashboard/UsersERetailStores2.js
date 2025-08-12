@@ -24,14 +24,14 @@ import DynamicReturnedItems from '../VariexContents/DynamicReturnedItems';
 import DynamicSuppliersTracker from '../Ops/DynamicSuppliersTracker';
 import VsalesSummary from '../Ops/VsalesSummary';
 
-
 const tools = [
   {
     key: 'sales',
     label: 'Sales Tracker',
     icon: <FaChartLine className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'Add your sales and see how your business is doing',
-    component: <AttendantsDynamicSales  />,
+    component: <AttendantsDynamicSales />,
+    isFreemium: true,
   },
   {
     key: 'Dynamic Products',
@@ -39,13 +39,15 @@ const tools = [
     icon: <FaBoxes className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'Add and manage your store’s products, prices, and stock here',
     component: <UserGadgetsDynamicProducts />,
+    isFreemium: true,
   },
   {
     key: 'inventory',
     label: 'Manage Inventory (Goods)',
     icon: <FaTasks className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'Keep an eye on how much goods you have sold and what is left in your store.',
-    component: <DynamicInventory  />,
+    component: <DynamicInventory />,
+    isFreemium: true,
   },
   {
     key: 'receipts',
@@ -53,6 +55,7 @@ const tools = [
     icon: <FaReceipt className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'Monitor and track sales.',
     component: <DynamicReceipts />,
+    isFreemium: false,
   },
   {
     key: 'returns',
@@ -60,6 +63,7 @@ const tools = [
     icon: <FaUndoAlt className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'Track returned items from customers.',
     component: <DynamicReturnedItems />,
+    isFreemium: false,
   },
   {
     key: 'expenses',
@@ -67,6 +71,7 @@ const tools = [
     icon: <FaRegMoneyBillAlt className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'Keep track of your stores spending.',
     component: <ExpenseTracker />,
+    isFreemium: false,
   },
   {
     key: 'unpaid supplies',
@@ -74,6 +79,7 @@ const tools = [
     icon: <FaBoxOpen className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'See who took goods on credit and hasn’t paid yet',
     component: <AttendantsUnpaidSupplies />,
+    isFreemium: false,
   },
   {
     key: 'debts',
@@ -81,24 +87,23 @@ const tools = [
     icon: <FaMoneyCheckAlt className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'Track debtors.',
     component: <DebtTracker />,
+    isFreemium: false,
   },
-
-{
+  {
     key: 'sales_summary',
     label: 'Sales Summary',
-    icon: <FaChartLine className="text-2xl sm:text-5xl sm:text-6xl text-indigo-600" />,
+    icon: <FaChartLine className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'View a summary of your sales performance.',
-    component: <VsalesSummary  />,
+    component: <VsalesSummary />,
+    isFreemium: true,
   },
-
-
-
   {
     key: 'Suppliers',
     label: 'Suppliers & Product Tracker',
     icon: <FaSearch className="text-2xl sm:text-5xl text-indigo-600" />,
     desc: 'Track product & suppliers.',
     component: <DynamicSuppliersTracker />,
+    isFreemium: false,
   },
 ];
 
@@ -108,13 +113,11 @@ const featureKeyMapping = {
   'products': 'Dynamic Products',
   'product tracker': 'Dynamic Products',
   'products tracker': 'Dynamic Products',
- 'suppliers & product tracker': 'Suppliers',
+  'suppliers & product tracker': 'Suppliers',
   'suppliers': 'Suppliers',
   'supplier': 'Suppliers',
   'sales summary': 'sales_summary',
-
 };
-
 
 export default function DynamicDashboard() {
   const [shopName, setShopName] = useState('Store Owner');
@@ -122,6 +125,7 @@ export default function DynamicDashboard() {
   const [allowedFeatures, setAllowedFeatures] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isPremium, setIsPremium] = useState(false);
 
   const fetchAllowedFeatures = async () => {
     try {
@@ -129,54 +133,68 @@ export default function DynamicDashboard() {
       setError('');
       const storeId = localStorage.getItem('store_id');
       const userId = localStorage.getItem('user_id');
+      const userAccessRaw = localStorage.getItem('user_access');
+      let hasPremiumAccess = false;
+      let fetchedShopName = 'Store Owner';
+      let features = [];
 
       if (!storeId) {
         setError('No store assigned. Contact your admin.');
         setAllowedFeatures([]);
+        setIsLoading(false);
         return;
       }
 
       if (!userId) {
         setError('User not authenticated. Please log in.');
         setAllowedFeatures([]);
+        setIsLoading(false);
         return;
       }
 
-      // Fetch store features
+      // Fetch store features and premium status
       const { data: storeData, error: storeError } = await supabase
         .from('stores')
-        .select('shop_name, allowed_features')
+        .select('shop_name, allowed_features, premium')
         .eq('id', storeId)
         .single();
 
       if (storeError) {
         setError('Failed to load store permissions.');
         setAllowedFeatures([]);
+        setIsLoading(false);
         return;
       }
 
-      setShopName(storeData?.shop_name || 'Store Owner');
-      let storeFeatures = [];
+      fetchedShopName = storeData?.shop_name || 'Store Owner';
+      const isPremiumStore = storeData.premium === true || 
+                           (typeof storeData.premium === 'string' && 
+                            storeData.premium.toLowerCase() === 'true');
+      if (isPremiumStore) {
+        hasPremiumAccess = true;
+      }
+
+      // Parse store features
       if (Array.isArray(storeData?.allowed_features)) {
-        storeFeatures = storeData.allowed_features
+        features = storeData.allowed_features
           .map((item) => item?.trim().toLowerCase())
           .filter(Boolean);
       } else if (storeData?.allowed_features === '' || storeData?.allowed_features === '""') {
-        storeFeatures = [];
+        features = [];
       } else if (typeof storeData?.allowed_features === 'string') {
         try {
           const parsed = JSON.parse(storeData.allowed_features);
           if (Array.isArray(parsed)) {
-            storeFeatures = parsed
+            features = parsed
               .map((item) => item?.trim().toLowerCase())
               .filter(Boolean);
           } else {
             setError('Invalid store feature data.');
-            storeFeatures = [];
+            features = [];
           }
         } catch (e) {
           setError('Invalid store feature data.');
-          storeFeatures = [];
+          features = [];
         }
       }
 
@@ -191,6 +209,7 @@ export default function DynamicDashboard() {
       if (userError) {
         setError('Failed to load user permissions.');
         setAllowedFeatures([]);
+        setIsLoading(false);
         return;
       }
 
@@ -224,12 +243,64 @@ export default function DynamicDashboard() {
         }
       }
 
+      // If not premium yet and user_id is present, check associated stores via store_users
+      if (!hasPremiumAccess && userId) {
+        const { data: userStores, error: userStoresError } = await supabase
+          .from('store_users')
+          .select('store_id')
+          .eq('id', userId);
+
+        if (!userStoresError && userStores?.length > 0) {
+          const associatedStoreIds = userStores.map((us) => us.store_id);
+
+          // Query premium status for associated stores
+          const { data: premiumStores, error: premiumStoresError } = await supabase
+            .from('stores')
+            .select('id, shop_name, premium')
+            .in('id', associatedStoreIds)
+            .eq('premium', true);
+
+          if (!premiumStoresError && premiumStores?.length > 0) {
+            hasPremiumAccess = true;
+            fetchedShopName = premiumStores[0].shop_name || fetchedShopName;
+          }
+        }
+      }
+
+      // If user_access is present, cross-check store_ids for premium
+      if (!hasPremiumAccess && userAccessRaw) {
+        try {
+          const userAccess = JSON.parse(userAccessRaw);
+          const accessStoreIds = userAccess?.store_ids || [];
+
+          if (accessStoreIds.length > 0) {
+            const { data: premiumAccessStores, error: premiumAccessError } = await supabase
+              .from('stores')
+              .select('id, shop_name, premium')
+              .in('id', accessStoreIds)
+              .eq('premium', true);
+
+            if (!premiumAccessError && premiumAccessStores?.length > 0) {
+              hasPremiumAccess = true;
+              fetchedShopName = premiumAccessStores[0].shop_name || fetchedShopName;
+            }
+          }
+        } catch (parseError) {
+          console.error('Error parsing user_access:', parseError.message);
+        }
+      }
+
       // Intersect store and user features
-      const effectiveFeatures = storeFeatures
+      const effectiveFeatures = features
         .map((f) => featureKeyMapping[f] || f)
         .filter((f) => userFeatures.includes(f));
 
+      setShopName(fetchedShopName);
+      setIsPremium(hasPremiumAccess);
       setAllowedFeatures(effectiveFeatures);
+      if (!hasPremiumAccess) {
+        setError('Some features are available only for premium users. Please upgrade your store’s subscription.');
+      }
     } catch (err) {
       setError('An error occurred while loading permissions.');
       setAllowedFeatures([]);
@@ -249,8 +320,13 @@ export default function DynamicDashboard() {
   }, [allowedFeatures, isLoading, activeTool]);
 
   const handleToolClick = (key) => {
+    const tool = tools.find((t) => t.key === key);
     if (!allowedFeatures.includes(key)) {
-      setError(`Access Denied: ${tools.find((t) => t.key === key).label}: Premium feature or Contact your admin to unlock.`);
+      setError(`Access Denied: ${tool.label} is not enabled for your store. Contact your admin to unlock this feature.`);
+      return;
+    }
+    if (!tool.isFreemium && !isPremium) {
+      setError(`Access Denied: ${tool.label} is a premium feature. Please upgrade your subscription.`);
       return;
     }
     setActiveTool(key);
@@ -259,17 +335,40 @@ export default function DynamicDashboard() {
 
   const renderContent = () => {
     if (isLoading) {
-      return <div className="w-full bg-white dark:bg-gray-900 p-4 max-w-7xl mx-auto">Loading...</div>;
+      return (
+        <div className="w-full bg-white dark:bg-gray-900 p-4 max-w-7xl mx-auto">
+          <div className="flex items-center justify-center min-h-screen">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-indigo-500"></div>
+          </div>
+        </div>
+      );
     }
 
     if (activeTool) {
       const tool = tools.find((t) => t.key === activeTool);
       if (!allowedFeatures.includes(activeTool)) {
         return (
-          <div className="w-full bg-white dark:bg-gray-900 p-4 max-w-7xl mx-auto">
+          <div className="w-full bg-white dark:bg-gray-900 p-4 max-w-7xl mx-auto text-center text-gray-600 dark:text-gray-400">
+            <FaLock className="text-2xl sm:text-3xl mb-2" />
             <div className="text-red-500 dark:text-red-400">
               Access Denied: You do not have permission to view {tool.label}. Contact your admin to unlock this feature.
             </div>
+          </div>
+        );
+      }
+      if (!tool.isFreemium && !isPremium) {
+        return (
+          <div className="w-full bg-white dark:bg-gray-900 p-4 max-w-7xl mx-auto text-center text-gray-600 dark:text-gray-400">
+            <FaLock className="text-2xl sm:text-3xl mb-2" />
+            <p>This feature is available only for premium users. Please upgrade your store’s subscription.</p>
+            <a
+              href="/upgrade"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block mt-3 bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-indigo-700 transition"
+            >
+              Upgrade to Premium
+            </a>
           </div>
         );
       }
@@ -288,49 +387,46 @@ export default function DynamicDashboard() {
             </h2>
             <p className="text-gray-600 dark:text-gray-400 text-xs sm:text-sm">{tool.desc}</p>
           </div>
-          {tool.component}
+          {React.cloneElement(tool.component, { setActiveTool })}
         </div>
       );
     }
 
     return (
-      <div className="w-full bg-white dark:bg-gray-900 p-4 max-w-7xl mx-auto">
-        <div className="grid grid-cols-3 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4">
-          {tools.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => handleToolClick(t.key)}
-              className={`flex flex-col items-center justify-center bg-white dark:bg-gray-800 p-2 sm:p-6 rounded-xl shadow hover:shadow-lg transition h-32 sm:h-48 ${
-                !allowedFeatures.includes(t.key) ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-              disabled={!allowedFeatures.includes(t.key)}
-              title={
-                allowedFeatures.includes(t.key)
-                  ? t.desc
-                  : `Locked: ${t.label}: Premium feature or Contact your admin to unlock`
-              }
-              aria-label={`Select ${t.label}`}
-            >
-              <div className="relative">
-                {t.icon}
-                {!allowedFeatures.includes(t.key) && (
-                  <FaLock className="absolute top-0 right-0 text-red-500 text-sm" />
-                )}
+      <div className="relative flex-1 px-4 sm:px-6 grid grid-cols-3 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4">
+        {tools.map((t) => (
+          <div
+            key={t.key}
+            className={`relative flex flex-col items-center justify-center bg-white dark:bg-gray-800 p-2 sm:p-6 rounded-xl shadow h-32 sm:h-48 transition ${
+              (t.isFreemium || isPremium) && allowedFeatures.includes(t.key) ? 'hover:shadow-lg cursor-pointer' : 'cursor-not-allowed'
+            }`}
+            onClick={() => handleToolClick(t.key)}
+            title={
+              (t.isFreemium || isPremium) && allowedFeatures.includes(t.key)
+                ? t.desc
+                : `Locked: ${t.label}: Premium feature or Contact your admin to unlock.`
+            }
+            aria-label={`Select ${t.label}`}
+          >
+            {t.icon}
+            <span className="mt-2 text-xs sm:text-base font-medium text-indigo-800 dark:text-indigo-400">
+              {t.label}
+            </span>
+            {(!t.isFreemium && !isPremium) || !allowedFeatures.includes(t.key) ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-200/20 dark:bg-gray-700/20 rounded-xl">
+                <FaLock className="text-red-300 dark:text-red-500 text-2xl sm:text-3xl" />
               </div>
-              <span className="mt-2 text-xs sm:text-base font-medium text-indigo-800 dark:text-white">
-                {t.label}
-              </span>
-            </button>
-          ))}
-        </div>
+            ) : null}
+          </div>
+        ))}
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900 w-full px-2 sm:px-4">
-      <header className="text-center mb-4 sm:mb-6">
-        <h1 className="text-lg sm:text-3xl font-bold text-indigo-800 dark:text-white">
+    <div className="min-h-screen bg-white dark:bg-gray-900 w-full flex flex-col">
+      <header className="text-center mb-4 sm:mb-6 pt-4 sm:pt-6">
+        <h1 className="text-lg sm:text-3xl font-bold text-indigo-800 dark:text-indigo-400">
           Welcome, {shopName}!
         </h1>
         {!activeTool && (
@@ -339,13 +435,30 @@ export default function DynamicDashboard() {
           </p>
         )}
       </header>
+           
+     {!isPremium && (
+       <div className="px-3 sm:px-6 mt-4 flex flex-col sm:flex-row items-center justify-center gap-2 text-center">
+         <span className="inline-flex items-center gap-1 bg-yellow-100 text-yellow-800 text-xs sm:text-sm font-medium px-2 py-1 rounded-full">
+           <FaLock className="text-yellow-600 text-xs" /> Want to Access More Features? Upgrade to Premium!
+         </span>
+         <a
+           href="/upgrade"
+           target="_blank"
+           rel="noopener noreferrer"
+           className="bg-indigo-600 text-white font-medium text-xs sm:text-sm py-1.5 px-3 rounded-lg hover:bg-indigo-700 transition"
+         >
+           Upgrade Now
+         </a>
+       </div>
+     )}
+     
       {error && (
         <div className="text-center text-red-500 dark:text-red-400 mb-4 text-xs sm:text-sm">
           {error}
         </div>
       )}
       {renderContent()}
-      <div className="p-4 max-w-7xl mx-auto">
+      <div className="p-4">
         <button
           onClick={() => {
             localStorage.removeItem(`features_${localStorage.getItem('store_id')}`);

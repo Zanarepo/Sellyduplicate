@@ -22,6 +22,7 @@ import StoreUsersVariex from './StoreUsersVariex';
 import UsersERetailStores from './UsersERetailStores';
 import AIpowerInsights from './AIpowerInsights';
 import AdminOps from './AdminOps';
+import Financials from '../UserDashboard/Financials';
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('Fix Scan');
@@ -167,6 +168,16 @@ const Dashboard = () => {
             <UsersERetailStores />
           </div>
         );
+
+  
+      case 'Financials':
+        return (
+          <div className="w-full bg-white dark:bg-gray-700 rounded-lg shadow p-4">
+            <Financials />
+          </div>
+        );
+
+
       case 'Admin Ops':
         if (!allowedDashboards.includes('admin_ops')) {
           return (
@@ -175,14 +186,14 @@ const Dashboard = () => {
             </div>
           );
         } 
-       
         return (
           <div className="w-full bg-white dark:bg-gray-900 rounded-lg shadow p-4">
             <AdminOps/>
           </div>
         );
 
-     
+
+      
 
 
       case 'Profile':
@@ -267,12 +278,25 @@ const Dashboard = () => {
       disabled: !allowedDashboards.includes('admin_ops'),
     },
 
+
+    
+  {
+      name: 'Financials',
+      icon: FaBell,
+      aria: 'finances: see all your financial records',
+      dataTour: 'finance',
+    },
+
+
+
     {
       name: 'Notifications',
       icon: FaBell,
       aria: 'Notifications: Stay updated with store-related notifications',
       dataTour: 'notifications',
     },
+
+
     {
       name: 'Colleagues',
       icon: FaIdBadge,

@@ -27,6 +27,7 @@ import AIpowerInsights from './AIpowerInsights';
 import AdminOps from './AdminOps';
 import StoreAdmins from './StoreAdmins';
 import Variex from './Variex'
+import Financials from '../UserDashboard/Financials';
 
 // Helper function to fetch table data
 async function fetchTableData(table, storeId) {
@@ -338,6 +339,16 @@ const Dashboard = () => {
             <Notifications fetchTableData={fetchTableData} performOperation={performOperation} storeId={storeId} />
           </div>
         );
+
+
+         case 'Financials':
+        return (
+          <div className="w-full bg-white dark:bg-gray-900 p-4">
+            <Financials fetchTableData={fetchTableData} performOperation={performOperation} storeId={storeId} />
+          </div>
+        );
+
+
       case 'Store Admins':
         return (
           <div className="w-full bg-white dark:bg-gray-900 p-4">
@@ -413,6 +424,14 @@ const Dashboard = () => {
       aria: 'AI Insights: Access AI-powered insights',
       dataTour: 'ai-insights',
       disabled: !allowedDashboards.includes('ai_insights'),
+    },
+
+
+     {
+      name: 'Financials',
+      icon: FaUser,
+      aria: 'Profile: View and edit your profile',
+      dataTour: 'profile',
     },
     {
       name: 'Admin Ops',
